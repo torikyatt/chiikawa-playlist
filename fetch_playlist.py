@@ -19,8 +19,7 @@ UPLOADS_PLAYLIST_ID = "UU" + CHANNEL_ID[2:]  # UC... -> UU... がアップロー
 MAX_RESULTS = 20  # 直近何件をチェック対象にするか
 OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "playlist.json")
 
-TITLE_KEYWORDS = ["ちいかわ", "期間限定"]
-
+TITLE_KEYWORDS = ["ちいかわ", "限定配信"]  
 
 def fetch_recent_uploads(api_key: str) -> list:
     params = {
