@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 めざましテレビ公式YouTubeチャンネルから、
-タイトルに「ちいかわ」と「限定配信」を含む最新動画を1件抽出し、
-playlist.json に書き出すスクリプト。
+タイトルに「ちいかわ」と「限定配信」を含む動画(=現在公開中の見逃し配信)を
+すべて抽出し、新しい順に並べて playlist.json に書き出すスクリプト。
 
 必要な環境変数:
   YOUTUBE_API_KEY  ... YouTube Data API v3 のAPIキー
@@ -51,33 +51,42 @@ def fetch_recent_uploads(api_key: str) -> list:
     return items[:MAX_TOTAL_RESULTS]
 
 
-def find_target_video(items: list):
+def find_target_videos(items: list) -> list:
+    """条件に一致する動画を全て抽出し、公開日時の新しい順に並べて返す"""
+    results = []
+
     for item in items:
         snippet = item.get("snippet", {})
         title = snippet.get("title", "")
 
-        if all(keyword in title for keyword in TITLE_KEYWORDS):
-            video_id = snippet.get("resourceId", {}).get("videoId")
-            if not video_id:
-                continue
-            return {
-                "found": True,
-                "title": title,
-                "videoId": video_id,
-                "url": f"https://www.youtube.com/watch?v={video_id}",
-                "publishedAt": snippet.get("publishedAt", ""),
-            }
-    return None
+        if not all(keyword in title for keyword in TITLE_KEYWORDS):
+            continue
+
+        video_id = snippet.get("resourceId", {}).get("videoId")
+        if not video_id:
+            continue
+
+        results.append({
+            "title": title,
+            "videoId": video_id,
+            "url": f"https://www.youtube.com/watch?v={video_id}",
+            "publishedAt": snippet.get("publishedAt", ""),
+        })
+
+    # 新しい順(publishedAtの降順)に並べる。空文字は最後に回す。
+    results.sort(key=lambda v: v["publishedAt"], reverse=True)
+    return results
 
 
-def load_previous_result() -> dict:
+def load_previous_items() -> list:
     if not os.path.exists(OUTPUT_PATH):
-        return {"found": False}
+        return []
     try:
         with open(OUTPUT_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+        return data.get("items", [])
     except (json.JSONDecodeError, OSError):
-        return {"found": False}
+        return []
 
 
 def main():
@@ -86,13 +95,14 @@ def main():
         print("YOUTUBE_API_KEY が設定されていません", file=sys.stderr)
         sys.exit(1)
 
-    items = fetch_recent_uploads(api_key)
-    result = find_target_video(items)
+    uploads = fetch_recent_uploads(api_key)
+    items = find_target_videos(uploads)
 
-    if result is None:
-        # 該当なし: 前回の結果をそのまま維持する(限定配信がまだ続いている可能性があるため)
-        result = load_previous_result()
-        result["found"] = result.get("found", False)
+    if not items:
+        # 該当なし: 前回の結果をそのまま維持する(取得エラーなどで一時的に0件になった場合の保険)
+        items = load_previous_items()
+
+    result = {"items": items}
 
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
