@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 めざましテレビ公式YouTubeチャンネルから、
-タイトルに「ちいかわ」と「期間限定」を含む最新動画を1件抽出し、
+タイトルに「ちいかわ」と「限定配信」を含む最新動画を1件抽出し、
 playlist.json に書き出すスクリプト。
 
 必要な環境変数:
@@ -16,24 +16,39 @@ import urllib.parse
 
 CHANNEL_ID = "UCrrsHarrLoiLTqu1LHxDJpw"  # めざましテレビ 公式YouTube
 UPLOADS_PLAYLIST_ID = "UU" + CHANNEL_ID[2:]  # UC... -> UU... がアップロード一覧プレイリストID
-MAX_RESULTS = 20  # 直近何件をチェック対象にするか
+MAX_TOTAL_RESULTS = 100  # 直近何件をチェック対象にするか
+PAGE_SIZE = 50  # YouTube APIの1回あたり上限
 OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "playlist.json")
 
-TITLE_KEYWORDS = ["ちいかわ", "限定配信"]  
+TITLE_KEYWORDS = ["ちいかわ", "限定配信"]
+
 
 def fetch_recent_uploads(api_key: str) -> list:
-    params = {
-        "part": "snippet",
-        "playlistId": UPLOADS_PLAYLIST_ID,
-        "maxResults": str(MAX_RESULTS),
-        "key": api_key,
-    }
-    url = "https://www.googleapis.com/youtube/v3/playlistItems?" + urllib.parse.urlencode(params)
+    items = []
+    page_token = None
 
-    with urllib.request.urlopen(url) as res:
-        data = json.load(res)
+    while len(items) < MAX_TOTAL_RESULTS:
+        params = {
+            "part": "snippet",
+            "playlistId": UPLOADS_PLAYLIST_ID,
+            "maxResults": str(PAGE_SIZE),
+            "key": api_key,
+        }
+        if page_token:
+            params["pageToken"] = page_token
 
-    return data.get("items", [])
+        url = "https://www.googleapis.com/youtube/v3/playlistItems?" + urllib.parse.urlencode(params)
+
+        with urllib.request.urlopen(url) as res:
+            data = json.load(res)
+
+        items.extend(data.get("items", []))
+
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            break
+
+    return items[:MAX_TOTAL_RESULTS]
 
 
 def find_target_video(items: list):
@@ -75,7 +90,7 @@ def main():
     result = find_target_video(items)
 
     if result is None:
-        # 該当なし: 前回の結果をそのまま維持する(期間限定配信がまだ続いている可能性があるため)
+        # 該当なし: 前回の結果をそのまま維持する(限定配信がまだ続いている可能性があるため)
         result = load_previous_result()
         result["found"] = result.get("found", False)
 
